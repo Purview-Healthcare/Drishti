@@ -32,9 +32,47 @@
     // its own branding: Brahmastra already says where you are
     R + ' .nav .brand,' + R + ' .auth .brand,' + R + ' .auth > svg,' + R + ' .auth .sub,' + R + ' .fb-tab{display:none !important;}',
     R + ' .nav{background:' + T.panel + ';border-bottom:1px solid ' + T.border + ';backdrop-filter:none;-webkit-backdrop-filter:none;}',
-    R + ' .auth{box-shadow:0 10px 30px rgba(0,0,0,.12);}'
+    R + ' .auth{box-shadow:0 10px 30px rgba(0,0,0,.12);}',
+    // a thin scrollbar in the theme's colours, so the page edge reads as Brahmastra's own
+    R + '{scrollbar-width:thin;scrollbar-color:' + T.border + ' transparent;}',
+    R + ' ::-webkit-scrollbar{width:10px;height:10px;}' + R + ' ::-webkit-scrollbar-thumb{background:' + T.border + ';border-radius:8px;border:2px solid ' + T.bg + ';}' + R + ' ::-webkit-scrollbar-track{background:transparent;}',
+    // once Brahmastra draws the tabs itself (see below), Drishti's whole bar goes: tabs, name, role and Sign out.
+    // Brahmastra signs people in and out of Drishti with its own session.
+    'html.dr-lift .nav{display:none !important;}',
+    // the page lines up with Brahmastra's own left edge instead of centring itself in a narrower column
+    R + ' .wrap{max-width:none;padding:18px 2px 60px;}'
   ].filter(Boolean).join('\n');
   (document.head || root).appendChild(css);
+
+  /* Brahmastra can draw Drishti's tabs (Overview, Clients, Formulas...) in its own tab row. It says so with a
+     'brahmastra:hello' message; from then on the page sends its tabs ({id, label, on}) whenever they change, hides
+     its own bar, and opens a tab when Brahmastra sends 'brahmastra:go'. An older Brahmastra never says hello, so
+     nothing is hidden and Drishti's own bar stays. */
+  var TAB_SEL = '.nav .tab';
+  var lifted = false, last = '';
+  var tabsNow = function () {
+    return Array.prototype.map.call(document.querySelectorAll(TAB_SEL), function (b) {
+      var l = b.textContent.trim(); return { id: l, label: l, on: b.classList.contains('on') };
+    }).filter(function (t) { return t.label; });
+  };
+  var report = function () {
+    if (!lifted || window.parent === window) return;
+    var t = tabsNow(), k = JSON.stringify(t);
+    if (k === last) return;
+    last = k;
+    window.parent.postMessage({ type: 'embed:tabs', app: 'drishti', tabs: t }, '*');
+  };
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    var d = e.data || {};
+    if (d.type === 'brahmastra:hello') { lifted = true; root.classList.add('dr-lift'); last = ''; report(); }
+    else if (d.type === 'brahmastra:go' && d.id != null) {
+      var hit = Array.prototype.filter.call(document.querySelectorAll(TAB_SEL), function (b) { return b.textContent.trim() === String(d.id); })[0];
+      if (hit) { hit.click(); window.scrollTo(0, 0); }
+    }
+  });
+  var watch = function () { new MutationObserver(report).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); };
+  if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
   // Brahmastra drops Drishti's sign-in token into this browser (same web address). If it arrives while
   // the welcome card is up, come in without asking anyone to click.
   window.addEventListener('storage', function (e) {

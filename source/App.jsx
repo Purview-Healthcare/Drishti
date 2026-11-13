@@ -908,7 +908,7 @@ function autoCompute(reps, numDays, joinKeys) {
       if (!SCOPE_BY_KEY[sk]?.criteria?.some((c) => c.key === "escalations")) continue;
       let cnt = null;
       if (esc.byDept) cnt = Object.entries(esc.byDept).filter(([d]) => DEPT_PATS[sk].test(d)).reduce((s, [, v]) => s + v, 0);
-      else if (sk === "ar") cnt = esc.count;
+      else if (sk === "ar" || esc.count === 0) cnt = esc.count;   // a tracker with no rows: no escalations in any department
       if (cnt != null) out[`${sk}.escalations`] = { value: cnt, src: esc.byDept ? "tracker · " + sk.toUpperCase() + " dept" : "tracker rows", inputs: { escalations: cnt } };
     }
   }

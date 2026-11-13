@@ -498,7 +498,8 @@ const FIELDS = {
         ID, code, name or status column is never used as an amount),
      3. exactly one column must be a clear match.
    If no column passes, or more than one is a clear match, nothing is guessed: the supervisor is asked. */
-const GENERIC_WORDS = new Set(["amount", "balance", "type", "status", "paid", "payment", "claim", "name", "code", "reason", "score", "result", "adjustment", "charge", "charges", "charges?", "billed", "difference", "done", "sent", "action", "notes", "comment", "aging", "bucket", "plan", "insurance", "source", "priority", "outcome", "allowed", "refund", "reversal", "recovery", "variance", "scope", "proc", "provider", "patient"]);
+const GENERIC_WORDS = new Set(["amount", "balance", "type", "status", "paid", "payment", "claim", "name", "code", "reason", "score", "result", "adjustment", "charge", "charges", "charges?", "billed", "difference", "done", "sent", "notes", "comment", "aging", "bucket", "plan", "insurance", "source", "priority", "outcome", "allowed", "refund", "reversal", "recovery", "variance", "scope", "proc", "provider", "patient"]);
+// "action" is not on this list: a heading Action is the clear match for the SLA status breakdown, ahead of Sub Status
 const isGenericPat = (p) => GENERIC_WORDS.has(p.source.replace(/\\b/g, "").toLowerCase());
 const NOT_AMOUNT_HDR = /\bdate\b|\bdob\b|\bdos\b|\btime\b|\bid\b|\bcode\b|\bno\b|\bnum(ber)?\b|#|\bcpt\b|\bname\b|\btype\b|\bstatus\b|\bphone\b|\bzip\b|\bnpi\b/i;
 const NOT_FLAG_HDR = /\bdate\b|\btime\b|\bamount\b|\bid\b|\bno\b|#/i;

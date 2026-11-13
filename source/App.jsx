@@ -593,9 +593,20 @@ function isDone(v) {
 }
 
 /* derive one report into figures; returns { ...figures, missing:[{id,label}], columns:[...] }.
-   override maps fieldId -> column index chosen by the supervisor. */
-function deriveReport(key, rep, override) {
-  const ctx = { used: {}, amb: {}, byPats: new Map() };
+   override maps fieldId -> column index chosen by the supervisor; asOf is the day AR is aged to (agingAsOf). */
+// The day AR without an aging bucket column is aged to: the last day of the period the file is for (for the
+// previous period's AR, the day before this period starts), so a past month reads the same whatever day it is
+// uploaded. Null while that day is still to come, and AR is aged to today. Midday UTC, so a date of service
+// counts whole days in any time zone.
+function agingAsOf(key, period) {
+  const r = (period && period.range) || {};
+  const from = parseYmd(r.from), last = key === "arprev" ? (from ? addDays(from, -1) : null) : parseYmd(r.to);
+  if (!last) return null;
+  const at = new Date(Date.UTC(last.getFullYear(), last.getMonth(), last.getDate(), 12));
+  return at < new Date() ? at : null;
+}
+function deriveReport(key, rep, override, asOf) {
+  const ctx = { used: {}, amb: {}, byPats: new Map(), asOf: asOf || null };
   DERIVE_CTX = ctx;
   try { return deriveReportInner(key, rep, override, ctx); } finally { DERIVE_CTX = null; }
 }
@@ -720,12 +731,12 @@ function deriveReportInner(key, rep, override, ctx) {
   if (key === "ar" || key === "arprev") {
     out.totalAR = out.balance; { const cI = findIdx(rep, P.charge, override, "archarges"); out.totalCharges = cI != null ? sumIdx(rep, cI) : null; } out.count = countClaims(rep, override);
     if (key === "ar") out.payerAR = groupSum(rep, override, P.payer, P.balance, "payer");
-    // aging: prefer bucket column, else compute from DOS (age = today - DOS)
+    // aging: prefer bucket column, else compute from DOS (age = the day aged to - DOS: the end of the period, or today)
     const bIdx = findIdx(rep, P.bucket, override, "bucket");
     const dIdx = findIdx(rep, P.dos, override, "dos");
     const balIdx = findIdx(rep, P.balance, override, "balance");
     if (balIdx != null && (bIdx != null || dIdx != null)) {
-      const g = {}, gc = {}, seen = {}; const today = new Date(); const cIdx = findIdx(rep, P.claimid, override, "claimid");
+      const g = {}, gc = {}, seen = {}; const today = ctx.asOf || new Date(); const cIdx = findIdx(rep, P.claimid, override, "claimid");
       for (const r of rep.rows) {
         const bal = n((r || [])[balIdx]); if (bal == null) continue;
         let bucket = null;
@@ -737,7 +748,7 @@ function deriveReportInner(key, rep, override, ctx) {
           else gc[bucket] = (gc[bucket] || 0) + 1;
         }
       }
-      if (Object.keys(g).length) { out.aging = g; out.agingCount = gc; out.agingSource = bIdx != null ? "report bucket" : "computed from DOS"; }
+      if (Object.keys(g).length) { out.aging = g; out.agingCount = gc; out.agingSource = bIdx != null ? "report bucket" : ctx.asOf ? `computed from DOS, aged to ${ctx.asOf.getUTCDate()} ${MSHORT[ctx.asOf.getUTCMonth()]} ${ctx.asOf.getUTCFullYear()}` : "computed from DOS"; }
     } else if (out.totalAR != null) {
       out.missing.push({ id: "bucket", label: "Aging bucket (or Date of Service)" });
     }
@@ -761,7 +772,7 @@ function deriveReportInner(key, rep, override, ctx) {
       const balIdx2 = findIdx(rep, P.balance, override, "balance");
       if (actIdx != null && balIdx2 != null) {
         const sb = {}, seen = {}, mat = {}; const cIdx = findIdx(rep, P.claimid, override, "claimid");
-        const bkIdx = findIdx(rep, P.bucket, override, "bucket"), dsIdx = findIdx(rep, P.dos, override, "dos"); const today2 = new Date();
+        const bkIdx = findIdx(rep, P.bucket, override, "bucket"), dsIdx = findIdx(rep, P.dos, override, "dos"); const today2 = ctx.asOf || new Date();
         for (const r of rep.rows) {
           const st = (String((r || [])[actIdx] ?? "").trim()) || "(blank)";
           const bal = n((r || [])[balIdx2]) || 0;
@@ -4750,7 +4761,7 @@ function ClientWorkspace({ me, can, clientId, onBack, onScopesChanged }) {
     rows.forEach((r, i) => {
       const key = picks[i]; if (!key || !r.rep) return;
       const base = savedCols(key, r.rep);
-      const derived = deriveReport(key, r.rep, base);
+      const derived = deriveReport(key, r.rep, base, agingAsOf(key, period));
       if (needsAsking(derived)) needCols.push({ key, rep: r.rep, derived, base });
       else ready.push({ key, derived });
     });
@@ -4781,14 +4792,14 @@ function ClientWorkspace({ me, can, clientId, onBack, onScopesChanged }) {
   };
   const onReport = (key, rep, src) => {
     const base = savedCols(key, rep);
-    const derived = deriveReport(key, rep, base);
+    const derived = deriveReport(key, rep, base, agingAsOf(key, period));
     if (needsAsking(derived)) setPending({ key, rep, derived, base });
     else applyAndCelebrate(key, derived);
     if (src) markFetched(src, 1);
   };
   const resolveColumns = (override) => {
     if (!pending) return; const full = { ...(pending.base || {}), ...override };
-    const derived = deriveReport(pending.key, pending.rep, full);
+    const derived = deriveReport(pending.key, pending.rep, full, agingAsOf(pending.key, period));
     rememberCols(pending.key, pending.rep, override);
     const key = pending.key; nextInColQueue(); applyAndCelebrate(key, derived);
   };
@@ -5482,7 +5493,7 @@ function Guide({ me, can, onGo }) {
               <div className="gd-tr"><span><b>Recouped amount</b></span><span>Recoupment, Recouped Amount, Recovery, Take-back, Reversal, Refund</span></div>
               <div className="gd-tr"><span><b>Audit score</b></span><span>Final Audit Score, Audit Score, Final Score, Quality Score, Score</span></div>
               <div className="gd-tr"><span><b>Claim number</b></span><span>Claim ID, Claim No, Claim #, Claim Number, ICN</span></div>
-              <div className="gd-tr"><span><b>Aging</b></span><span>Aging Bucket, Aging, Bucket, Age Category. If there is none, the Date of Service is used to work out the age.</span></div>
+              <div className="gd-tr"><span><b>Aging</b></span><span>Aging Bucket, Aging, Bucket, Age Category. If there is none, the Date of Service is used to work out the age on the last day of the period (or today, while the period is still running).</span></div>
               <div className="gd-tr"><span><b>Submission date</b></span><span>Submission Date, Submitted Date, Date Submitted, Billed Date, Claim Date</span></div>
               <div className="gd-tr"><span><b>Paid date</b></span><span>Paid Date, Payment Date, Date Paid, Check Date, Remittance Date, Posted Date</span></div>
               <div className="gd-tr"><span><b>Completed or not</b></span><span>Completed, Verification Status, Status, Done, Sent, Disposition</span></div>

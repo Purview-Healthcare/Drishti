@@ -1114,6 +1114,8 @@ function nameScore(fileName, rule) {
 //   slot              the proposed slot, or null
 //   options           slots worth offering in the dropdown
 //   reason            plain words for the review table
+// a slot as the team knows it: the report's own name, never its internal key
+const slotName = (key) => (REPORT_BY_KEY[key] ? REPORT_BY_KEY[key].name : "other report");
 function matchOne(file, allowedKeys) {
   const headers = file.headers || [];
   const rules = SLOT_RULES.filter((r) => !allowedKeys || allowedKeys.includes(r.key));
@@ -1133,15 +1135,15 @@ function matchOne(file, allowedKeys) {
     if (c.content === 2) return { slot: c.key, status: "certain", reason: "Name and columns both match", options: opts(scored.filter((x) => x.content > 0 || x.name > 0)) };
     // a merely compatible column set is not proof while another slot's columns are unmistakable
     if (c.content === 1 && !rival.length) return { slot: c.key, status: "certain", reason: "Name matches, columns are consistent", options: opts(scored.filter((x) => x.content > 0 || x.name > 0)) };
-    if (c.content === 1) return { slot: c.key, status: "check", reason: `Name says this, but the columns look like the ${RULE_BY_KEY[rival[0].key] ? rival[0].key : "another"} file`, options: opts([c, ...rival]) };
+    if (c.content === 1) return { slot: c.key, status: "check", reason: `Name says this, but the columns look like the ${slotName(rival[0].key)}`, options: opts([c, ...rival]) };
     // the name is clear but the columns are not what this slot needs: do not place it
-    return { slot: c.key, status: "check", reason: rival.length ? `Name says this, but the columns look like the ${rival[0].key} file` : "Name matches, but the expected columns were not found", options: opts([c, ...rival]) };
+    return { slot: c.key, status: "check", reason: rival.length ? `Name says this, but the columns look like the ${slotName(rival[0].key)}` : "Name matches, but the expected columns were not found", options: opts([c, ...rival]) };
   }
 
   // more than one slot claims the name
   if (strong.length > 1) {
     const agree = strong.filter((x) => x.content >= 1);
-    if (agree.length === 1) return { slot: agree[0].key, status: "check", reason: `Name could be ${strong.map((x) => x.key).join(" or ")}; columns point to this one`, options: opts(strong) };
+    if (agree.length === 1) return { slot: agree[0].key, status: "check", reason: `Name could be ${strong.map((x) => slotName(x.key)).join(" or ")}; columns point to this one`, options: opts(strong) };
     const fam = strong[0].rule.family;
     return { slot: null, status: "unknown", reason: fam ? `Name could be any of the ${fam} files` : "Name matches more than one slot", options: opts(strong) };
   }

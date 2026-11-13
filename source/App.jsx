@@ -2435,7 +2435,7 @@ function LeadershipOverview({ clients, me, onSetName, onOpenClient, onGoClients,
       if (idx < 0) { out.push({ ...base, empty: true, noPeriodForRange: mode !== "latest", rangeUnit: mode !== "latest" ? TYPE_UNIT[sel.kind] : "" }); continue; }
       const period = periods[idx], prev = prevSameType(periods, idx), prev2 = prevSameType(periods, idx, 2), unit = TYPE_UNIT[periodType(period)];
       const sc = clientScorecard(full, period, prev);
-      out.push({ ...base, period, periodLabel: period.label, cmpText: unit === "period" ? "vs the previous period" : "vs last " + unit, streak: redStreak(full, [period, prev, prev2]), streakUnit: unit, ...sc });
+      out.push({ ...base, period, periodLabel: period.label, cmpText: prev ? "vs " + (prev.label || "the period before") : "", streak: redStreak(full, [period, prev, prev2]), streakUnit: unit, ...sc });
     }
     setCards(out); if (out.some((c) => c.band === "ok")) setCelebrate((x) => x + 1);
   })(); return () => { live = false; }; }, [clients, mode, sel?.kind, sel?.from]);
@@ -2560,7 +2560,7 @@ function OverviewClientCard({ c, onOpen, onShare, showOwner }) {
             <span className={"chip " + (c.band || "info")}>{bandWord(c.band)}</span>
             {owner}
             {c.periodLabel && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>· {c.periodLabel}</span>}
-            {c.delta != null && c.delta !== 0 && <span style={{ fontSize: 11, fontWeight: 500, color: c.delta > 0 ? "var(--ok)" : "var(--miss)" }}>{c.delta > 0 ? "▲" : "▼"} {Math.abs(c.delta)}% {c.cmpText || "vs last period"}</span>}
+            {c.delta != null && c.delta !== 0 && <span style={{ fontSize: 11, fontWeight: 500, color: c.delta > 0 ? "var(--ok)" : "var(--miss)" }}>{c.delta > 0 ? "▲" : "▼"} {Math.abs(c.delta)} {Math.abs(c.delta) === 1 ? "pt" : "pts"} {c.cmpText || "vs the period before"}</span>}
           </div>
           {isStar && c.topScope && <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span className="bestchip">🏅 Best in {c.topScope.name} · {c.topScope.pct}%</span>
@@ -5588,7 +5588,7 @@ function Guide({ me, can, onGo }) {
                 </ul>
                 A client with nothing for the chosen month or week says so on its card.</li>
               <li><b>The top panel</b> gives the overall health across all clients, the KPI and SLA percentages, and how many clients are healthy, at risk and below target.</li>
-              <li><b>Each client card</b> shows its overall score and how it moved against the period before it of the same kind: <em>vs last month</em> for a month, <em>vs last week</em> for a week. Then <em>Overall KPI</em> and <em>Overall SLA</em>, and <em>KPI by scope</em> and <em>SLA by scope</em>.</li>
+              <li><b>Each client card</b> shows its overall score and how many points it moved against the month or week before it that has figures, for example <em>▲ 5 pts vs September 2026</em>. Then <em>Overall KPI</em> and <em>Overall SLA</em>, and <em>KPI by scope</em> and <em>SLA by scope</em>.</li>
               <li><b>Red 3 months in a row</b> (or weeks) names any metric that has been red in this period and the two before it. These are the problems that are not going away by themselves.</li>
               <li><b>Holding it up</b> and <b>Dragging it down</b> each show the three that matter most: the strongest, and the weakest with red before amber, taken from different scopes so you see where the problems are. A reason the supervisor typed shows under the metric. Everything else is in the small dropdown under each list, for example <em>20 more</em>, grouped by scope.</li>
               <li>Click <em>Open client</em> on a card for the detail. It opens on the month or week you were looking at.</li>

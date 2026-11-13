@@ -389,6 +389,9 @@ const targetText = (r) => !r ? "" :
 const stLabel = (s) => (s === "great" ? "Excellent" : s === "ok" ? "On target" : s === "warn" ? "At risk" : s === "miss" ? "Missed" : "—");
 
 /* --------------------- generic report reader --------------------------- */
+// A "Total" line at the bottom of an export is not a claim: its first filled cell reads Total, Grand total,
+// Sub total or Subtotal. Such rows are left out, and the checklist and the report card say how many.
+const isTotalRow = (r) => { const c = (r || []).find((x) => x != null && String(x).trim() !== ""); return typeof c === "string" && /^(grand\s*|sub\s*-?\s*)?totals?\s*:?$/i.test(c.trim()); };
 async function readReport(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
@@ -397,9 +400,10 @@ async function readReport(file) {
   let hi = 0;
   for (let i = 0; i < Math.min(rows.length, 15); i++) { if ((rows[i] || []).filter((c) => typeof c === "string" && c.trim()).length >= 2) { hi = i; break; } }
   const headers = (rows[hi] || []).map((h, i) => (h == null || h === "" ? `Column ${i + 1}` : String(h).trim()));
-  const dataRows = rows.slice(hi + 1).filter((r) => (r || []).some((c) => c != null && c !== ""));
+  const filled = rows.slice(hi + 1).filter((r) => (r || []).some((c) => c != null && c !== ""));
+  const dataRows = filled.filter((r) => !isTotalRow(r));
   const columns = headers.map((name, ci) => { let sum = 0, numeric = 0; for (const r of dataRows) { const c = (r || [])[ci]; if (c != null && c !== "") { const x = n(c); if (x != null) { sum += x; numeric++; } } } return { name, index: ci, sum, numeric }; });
-  return { rowCount: dataRows.length, columns, headers, rows: dataRows, fileName: file.name };
+  return { rowCount: dataRows.length, columns, headers, rows: dataRows, fileName: file.name, totalRows: filled.length - dataRows.length };
 }
 
 /* ---- report metadata (card display) ---- */
@@ -598,6 +602,7 @@ function deriveReport(key, rep, override) {
 const fieldLabel = (key, id) => (id === "date" ? (key === "paysub" ? "Submission date" : "Paid date") : (FIELD_META[id] && FIELD_META[id].label) || id);
 function deriveReportInner(key, rep, override, ctx) {
   const out = { fileName: rep.fileName, rows: rep.rowCount, missing: [], columns: rep.columns.map((c) => ({ name: c.name, index: c.index })) };
+  if (rep.totalRows) out.totalRows = rep.totalRows;
   for (const f of (FIELDS[key] || [])) {
     const idx = findIdx(rep, f.pats, override, f.id);
     if (idx == null) { out.missing.push({ id: f.id, label: f.label }); continue; }
@@ -3236,7 +3241,7 @@ function historyRows(client, p) {
 }
 const FIGURE_LABELS = {
   aging: "AR by aging bucket", agingCount: "Claims by aging bucket", statusBreakdown: "AR by status", statusAging: "AR by status and aging", payerAR: "AR by payer",
-  totalAR: "Total AR", totalCharges: "Total charges", count: "Claims counted", claims: "Claims", appeals: "Appeals", byDept: "By department", rows: "Rows in the file",
+  totalAR: "Total AR", totalCharges: "Total charges", count: "Claims counted", claims: "Claims", appeals: "Appeals", byDept: "By department", rows: "Rows in the file", totalRows: "Total rows left out",
   callsTotal: "Calls in total", callsPicked: "Calls picked up", callsMissed: "Calls missed", callsDropped: "Calls dropped", callsOther: "Other calls",
   cbDone: "Callbacks made", cbTotal: "Missed calls to call back", corrDone: "Correspondence sent", corrTotal: "Correspondence received", faxDone: "Fax and email completed", faxTotal: "Fax and email received",
   evCompleted: "Verifications completed", evTotal: "Verification requests", evUrgent: "Urgent requests", evRegular: "Regular requests",
@@ -4498,7 +4503,7 @@ function BulkReview({ rows, allowedKeys, onCancel, onApply, title, desc, onOther
               <div key={i} className={"bulkrow" + (dup ? " dup" : "")}>
                 <div className="br-file">
                   <div className="br-name">{r.name}</div>
-                  <div className="br-reason">{dup ? "Another file is already going to this slot" : r.outOfScope ? `Looks like the ${REPORT_BY_KEY[r.outOfScope]?.name || "report"}, but ${SCOPE_BY_KEY[RULE_BY_KEY[r.outOfScope]?.scope]?.name || "that scope"} is not switched on for this client` : r.reason}</div>
+                  <div className="br-reason">{dup ? "Another file is already going to this slot" : r.outOfScope ? `Looks like the ${REPORT_BY_KEY[r.outOfScope]?.name || "report"}, but ${SCOPE_BY_KEY[RULE_BY_KEY[r.outOfScope]?.scope]?.name || "that scope"} is not switched on for this client` : r.reason}{r.rep && r.rep.totalRows ? ` · ${r.rep.totalRows} total row${r.rep.totalRows === 1 ? "" : "s"} left out` : ""}</div>
                 </div>
                 <span className={"chip " + st.cls}>{dup ? "Clashes" : st.label}</span>
                 <select className="br-sel" value={picks[i]} onChange={(e) => set(i, e.target.value)}>
@@ -5050,6 +5055,7 @@ function ReportCard({ def, data, onReport, onAvg3, onClear, saved, onForget, onC
       {!data ? <div style={{ marginTop: 12 }}><button className="btn sm" onClick={choose} disabled={busy}>{busy ? "Reading…" : cloud ? "Upload from OneDrive" : "Upload file"}</button>{!cloud && <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 6 }}>{drag ? "Drop to upload" : "or drag and drop a file here"}</div>}</div> : <>
         <div className="rc-figs">{figs.map(([k, v], i) => <div key={i} className="rc-fig"><span className="k">{k}</span>{v == null ? <span className="v miss">not detected</span> : <span className="v mono">{v}</span>}</div>)}
           <div className="rc-fig"><span className="k">Rows read</span><span className="v mono">{data.rows}</span></div>
+          {data.totalRows > 0 && <div className="rc-fig"><span className="k">Total rows left out</span><span className="v mono">{data.totalRows}</span></div>}
         </div>
         {data.cols && data.cols.length > 0 && <div className="rc-cols"><div className="rc-cols-h">Columns read</div>{data.cols.map((c) => <div key={c.id} className="rc-col"><span>{c.label}</span><b title={c.name}>{c.name}</b></div>)}</div>}
         {saved && <div className="rc-saved">Using the columns you chose earlier. <button className="link" onClick={() => onForget(def.key)}>Forget them</button></div>}
@@ -5411,6 +5417,7 @@ function Guide({ me, can, onGo }) {
               <li>Excel (.xlsx or .xls) or CSV. One report per file.</li>
               <li>Only the <b>first sheet</b> is read. Put the data there.</li>
               <li>The column headings must be within the first 15 rows, with the data directly beneath them.</li>
+              <li>A <b>Total</b> line (Total, Grand total, Sub total) is not a claim, so it is left out. The checklist and the report card say how many were left out.</li>
               <li>Column names do not have to be exact. Drishti recognises the common ones, for example Claim ID, Claim No or ICN for the claim number.</li>
             </ul>
             <h3>Naming files for the all-at-once upload</h3>
